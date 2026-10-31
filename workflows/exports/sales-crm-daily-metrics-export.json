@@ -1,0 +1,350 @@
+{
+  "name": "Sales CRM — Daily Metrics Export",
+  "nodes": [
+    {
+      "name": "Hourly 10 Argentina",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * * *"
+            }
+          ]
+        },
+        "misfirePolicy": "skip"
+      }
+    },
+    {
+      "name": "Read Yesterday's Metric Events",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_date",
+              "condition": "eq",
+              "keyValue": "={{ (() => { const now = $now.setZone('America/Argentina/Buenos_Aires'); return (now.hour === 0 ? now.minus({ days: 1 }) : now).toFormat('yyyy-MM-dd'); })() }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "name": "Read Pending High-Priority Tasks",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        760,
+        300
+      ],
+      "parameters": {
+        "resource": "engagement",
+        "operation": "getAll",
+        "authentication": "appToken",
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "name": "Read Overdue Follow-up Review Queue",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1020,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_follow_up_review_queue",
+          "cachedResultName": "sales_follow_up_review_queue"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "overdue_high_priority"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "name": "Aggregate Daily Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const now = $now.setZone('America/Argentina/Buenos_Aires');\nconst metricDate = (now.hour === 0 ? now.minus({ days: 1 }) : now).toFormat('yyyy-MM-dd');\nconst events = $(\"Read Yesterday's Metric Events\").all().map((item) => item.json).filter((row) => row.metric_type);\nconst count = (metricType) => events.filter((row) => row.metric_type === metricType).length;\nconst scoreCount = (priority) => events.filter((row) => row.metric_type === 'lead_scored' && row.priority === priority).length;\nconst pendingTasks = $(\"Read Pending High-Priority Tasks\").all().filter((item) => item.json.metadata?.subject === 'Contactar lead de alta prioridad' && item.json.metadata?.status !== 'COMPLETED').length;\nconst overdueReview = $(\"Read Overdue Follow-up Review Queue\").all().filter((item) => item.json.status === 'overdue_high_priority').length;\nreturn [{ json: { metric_date: metricDate, leads_received: count('lead_received'), leads_valid: count('lead_valid'), leads_duplicated: count('lead_duplicate'), leads_validation_failed: count('lead_validation_failed'), leads_hubspot_failed: count('hubspot_failed'), leads_high: scoreCount('high'), leads_medium: scoreCount('medium'), leads_low: scoreCount('low'), high_priority_tasks_created: count('high_priority_task_created'), high_priority_tasks_pending: pendingTasks, overdue_follow_ups_pending: overdueReview } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "name": "Upsert Daily Metrics in Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "authentication": "oAuth2",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEETS_DOCUMENT_ID",
+          "cachedResultName": "Google Sheets document"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "daily_metrics",
+          "cachedResultName": "daily_metrics"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_date": "={{ $json.metric_date }}",
+            "leads_received": "={{ $json.leads_received }}",
+            "leads_valid": "={{ $json.leads_valid }}",
+            "leads_duplicated": "={{ $json.leads_duplicated }}",
+            "leads_validation_failed": "={{ $json.leads_validation_failed }}",
+            "leads_hubspot_failed": "={{ $json.leads_hubspot_failed }}",
+            "leads_high": "={{ $json.leads_high }}",
+            "leads_medium": "={{ $json.leads_medium }}",
+            "leads_low": "={{ $json.leads_low }}",
+            "high_priority_tasks_created": "={{ $json.high_priority_tasks_created }}",
+            "high_priority_tasks_pending": "={{ $json.high_priority_tasks_pending }}",
+            "overdue_follow_ups_pending": "={{ $json.overdue_follow_ups_pending }}"
+          },
+          "schema": [
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "leads_received",
+              "displayName": "leads_received",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "leads_valid",
+              "displayName": "leads_valid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "leads_duplicated",
+              "displayName": "leads_duplicated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "leads_validation_failed",
+              "displayName": "leads_validation_failed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "leads_hubspot_failed",
+              "displayName": "leads_hubspot_failed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "leads_high",
+              "displayName": "leads_high",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "leads_medium",
+              "displayName": "leads_medium",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "leads_low",
+              "displayName": "leads_low",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "high_priority_tasks_created",
+              "displayName": "high_priority_tasks_created",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "high_priority_tasks_pending",
+              "displayName": "high_priority_tasks_pending",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "overdue_follow_ups_pending",
+              "displayName": "overdue_follow_ups_pending",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            }
+          ],
+          "matchingColumns": [
+            "metric_date"
+          ]
+        },
+        "options": {
+          "locationDefine": {
+            "values": {
+              "headerRow": 1,
+              "firstDataRow": 2
+            }
+          },
+          "cellFormat": "RAW",
+          "handlingExtraData": "ignoreIt",
+          "useAppend": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Read Yesterday's Metric Events": {
+      "main": [
+        [
+          {
+            "node": "Read Pending High-Priority Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Pending High-Priority Tasks": {
+      "main": [
+        [
+          {
+            "node": "Read Overdue Follow-up Review Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Overdue Follow-up Review Queue": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Daily Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Daily Metrics": {
+      "main": [
+        [
+          {
+            "node": "Upsert Daily Metrics in Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hourly 10 Argentina": {
+      "main": [
+        [
+          {
+            "node": "Read Yesterday's Metric Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  }
+}

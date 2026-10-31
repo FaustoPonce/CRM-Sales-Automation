@@ -1,0 +1,133 @@
+{
+  "name": "Sales CRM — Review Pending Task Recoveries",
+  "nodes": [
+    {
+      "name": "Start pending-task review",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "name": "Get Pending Task Recoveries",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_retry_queue",
+          "cachedResultName": "sales_retry_queue"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "task_pending"
+            }
+          ]
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "updated_at",
+        "orderByDirection": "ASC"
+      }
+    },
+    {
+      "name": "Prepare Pending Task Review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "event_id",
+              "name": "eventId",
+              "value": "={{ $json.event_id }}",
+              "type": "string"
+            },
+            {
+              "id": "contact_id",
+              "name": "contactId",
+              "value": "={{ $json.contact_id }}",
+              "type": "string"
+            },
+            {
+              "id": "task_id",
+              "name": "taskId",
+              "value": "={{ $json.task_id }}",
+              "type": "string"
+            },
+            {
+              "id": "updated_at",
+              "name": "pendingSince",
+              "value": "={{ $json.updated_at }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "review_action",
+              "name": "reviewAction",
+              "value": "Confirmar en HubSpot si la tarea existe; si no existe, resolver el caso manualmente.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start pending-task review": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Task Recoveries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Task Recoveries": {
+      "main": [
+        [
+          {
+            "node": "Prepare Pending Task Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,222 @@
+{
+  "name": "Sales CRM — Follow-up Scheduler",
+  "nodes": [
+    {
+      "name": "Manual Trigger — Follow-up Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        180
+      ],
+      "parameters": {}
+    },
+    {
+      "name": "Weekdays 10:00 Argentina",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        340
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 10 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "HubSpot — List Engagements",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        260
+      ],
+      "parameters": {
+        "resource": "engagement",
+        "operation": "getAll",
+        "authentication": "appToken",
+        "returnAll": true
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "name": "Is Overdue High-Priority Task?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.metadata?.subject === 'Contactar lead de alta prioridad' && $json.metadata?.status !== 'COMPLETED' && Number($json.engagement?.timestamp ?? 0) < $now.toMillis() }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Upsert Follow-up Review Queue",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1080,
+        180
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_follow_up_review_queue",
+          "cachedResultName": "sales_follow_up_review_queue"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "task_id",
+              "condition": "eq",
+              "keyValue": "={{ String($json.engagement.id) }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "task_id": "={{ String($json.engagement.id) }}",
+            "contact_id": "={{ String($json.associations?.contactIds?.[0] ?? '') }}",
+            "due_at": "={{ new Date(Number($json.engagement.timestamp)).toISOString() }}",
+            "status": "overdue_high_priority",
+            "last_detected_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "task_id",
+              "displayName": "task_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contact_id",
+              "displayName": "contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "due_at",
+              "displayName": "due_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_detected_at",
+              "displayName": "last_detected_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger — Follow-up Test": {
+      "main": [
+        [
+          {
+            "node": "HubSpot — List Engagements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekdays 10:00 Argentina": {
+      "main": [
+        [
+          {
+            "node": "HubSpot — List Engagements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot — List Engagements": {
+      "main": [
+        [
+          {
+            "node": "Is Overdue High-Priority Task?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Overdue High-Priority Task?": {
+      "main": [
+        [
+          {
+            "node": "Upsert Follow-up Review Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  }
+}

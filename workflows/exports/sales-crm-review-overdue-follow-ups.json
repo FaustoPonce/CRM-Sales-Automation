@@ -1,0 +1,133 @@
+{
+  "name": "Sales CRM — Review Overdue Follow-ups",
+  "nodes": [
+    {
+      "name": "Start overdue follow-up review",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "name": "Get Overdue Follow-up Reviews",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_follow_up_review_queue",
+          "cachedResultName": "sales_follow_up_review_queue"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "overdue_high_priority"
+            }
+          ]
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "due_at",
+        "orderByDirection": "ASC"
+      }
+    },
+    {
+      "name": "Prepare Overdue Follow-up Review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "task_id",
+              "name": "taskId",
+              "value": "={{ $json.task_id }}",
+              "type": "string"
+            },
+            {
+              "id": "contact_id",
+              "name": "contactId",
+              "value": "={{ $json.contact_id }}",
+              "type": "string"
+            },
+            {
+              "id": "due_at",
+              "name": "dueAt",
+              "value": "={{ $json.due_at }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "last_detected_at",
+              "name": "lastDetectedAt",
+              "value": "={{ $json.last_detected_at }}",
+              "type": "string"
+            },
+            {
+              "id": "review_action",
+              "name": "reviewAction",
+              "value": "Revisar la tarea en HubSpot y resolver el follow-up manualmente.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start overdue follow-up review": {
+      "main": [
+        [
+          {
+            "node": "Get Overdue Follow-up Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Overdue Follow-up Reviews": {
+      "main": [
+        [
+          {
+            "node": "Prepare Overdue Follow-up Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

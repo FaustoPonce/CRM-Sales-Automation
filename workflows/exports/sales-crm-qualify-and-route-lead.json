@@ -1,0 +1,2703 @@
+{
+  "name": "Sales CRM — Qualify and Route Lead",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-sales-automation/lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook — Receive Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEAD_VALIDATOR_URL + '/validate/lead' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Validate Lead Contract",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        528,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        784,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: true, duplicate: false, eventId: $('Validate Lead Contract').item.json.body.data.eventId } }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "name": "Respond 202 — Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        6400,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.body.error }}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "name": "Respond 422 — Validation Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1040,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Fase 1\n\nValida el contrato del lead y responde al webhook. Sin efectos externos.",
+        "width": 560,
+        "color": 5
+      },
+      "name": "Fase 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "processed_lead_events",
+          "cachedResultName": "processed_lead_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "event_id",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "name": "Get Processed Event",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1040,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.id ?? '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1312,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: true, duplicate: true, eventId: $('Validate Lead Contract').item.json.body.data.eventId } }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "name": "Respond 202 — Duplicate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1584,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_crm_owner_routing",
+          "cachedResultName": "sales_crm_owner_routing"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "route_key",
+              "keyValue": "crm"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "name": "Get CRM Owner",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1584,
+        304
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "authentication": "appToken",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "companyName": "={{ $json.companyName ?? undefined }}",
+          "contactOwner": "={{ $('Get CRM Owner').item.json.owner_id }}",
+          "firstName": "={{ $json.firstName }}",
+          "jobTitle": "={{ $json.jobTitle ?? undefined }}",
+          "lastName": "={{ $json.lastName ?? undefined }}",
+          "industry": "={{ $json.industry ?? undefined }}",
+          "city": "={{ $json.city ?? undefined }}",
+          "country": "={{ $json.country ?? undefined }}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "lead_score",
+                "value": "={{ String($json.leadScore) }}"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "name": "HubSpot — Upsert Contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        4224,
+        400
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "processed_lead_events",
+          "cachedResultName": "processed_lead_events"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId }}"
+          },
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Mark Event Processed",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        6128,
+        304
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: false, error: 'hubspot_sync_failed', eventId: $('Validate Lead Contract').item.json.body.data.eventId } }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "name": "Respond 502 — HubSpot Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        6128,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Fase 2\n\nDeduplicación por eventId, enriquecimiento de empresa, scoring determinístico y upsert del contacto. Registra el evento solo después de que HubSpot confirma la sincronización.",
+        "height": 200,
+        "width": 3600,
+        "color": 4
+      },
+      "name": "Fase 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1008,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://companyenrichment.abstractapi.com/v2/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "domain",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.companyDomain }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Abstract — Enrich Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2112,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Abstract Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2368,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEAD_VALIDATOR_URL + '/validate/abstract-company' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Validate Abstract Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2624,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Abstract Response Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2880,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: false, error: 'abstract_enrichment_failed', eventId: $('Validate Lead Contract').item.json.body.data.eventId } }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "name": "Respond 502 — Abstract Enrichment Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2112,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: false, error: 'invalid_abstract_response', eventId: $('Validate Lead Contract').item.json.body.data.eventId } }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "name": "Respond 502 — Invalid Abstract Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2624,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Validate Lead Contract').item.json.body.data.companyDomain ?? '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Has Company Domain?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1840,
+        304
+      ]
+    },
+    {
+      "name": "Score Lead — Enriched",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3152,
+        208
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEAD_VALIDATOR_URL + '/score-lead' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { lead: $('Validate Lead Contract').item.json.body.data, company: $('Validate Abstract Response').item.json.body.data } }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Is Enriched Score Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3408,
+        208
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Respond 500 — Lead Scoring Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3408,
+        576
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: false, error: 'lead_scoring_failed', eventId: $('Validate Lead Contract').item.json.body.data.eventId } }}",
+        "options": {
+          "responseCode": 500
+        }
+      }
+    },
+    {
+      "name": "Build CRM Profile — Enriched",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        3680,
+        208
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "email",
+              "name": "email",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.email }}",
+              "type": "string"
+            },
+            {
+              "id": "firstName",
+              "name": "firstName",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.firstName }}",
+              "type": "string"
+            },
+            {
+              "id": "lastName",
+              "name": "lastName",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.lastName ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "companyName",
+              "name": "companyName",
+              "value": "={{ $('Validate Abstract Response').item.json.body.data.company_name ?? $('Validate Lead Contract').item.json.body.data.companyName ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "jobTitle",
+              "name": "jobTitle",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.jobTitle ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "companyWebsite",
+              "name": "companyWebsite",
+              "value": "={{ $('Validate Abstract Response').item.json.body.data.domain }}",
+              "type": "string"
+            },
+            {
+              "id": "industry",
+              "name": "industry",
+              "value": "={{ $('Validate Abstract Response').item.json.body.data.industry ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "city",
+              "name": "city",
+              "value": "={{ $('Validate Abstract Response').item.json.body.data.city ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "country",
+              "name": "country",
+              "value": "={{ $('Validate Abstract Response').item.json.body.data.country ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "employeeCount",
+              "name": "employeeCount",
+              "value": "={{ $('Validate Abstract Response').item.json.body.data.employee_count === null || $('Validate Abstract Response').item.json.body.data.employee_count === undefined ? undefined : String($('Validate Abstract Response').item.json.body.data.employee_count) }}",
+              "type": "string"
+            },
+            {
+              "id": "linkedinUrl",
+              "name": "linkedinUrl",
+              "value": "={{ $('Validate Abstract Response').item.json.body.data.linkedin_url ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "leadScore",
+              "name": "leadScore",
+              "value": "={{ $json.body.data.score }}",
+              "type": "number"
+            },
+            {
+              "id": "leadPriority",
+              "name": "leadPriority",
+              "value": "={{ $json.body.data.priority }}",
+              "type": "string"
+            },
+            {
+              "id": "leadService",
+              "name": "leadService",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.serviceInterest }}",
+              "type": "string"
+            },
+            {
+              "id": "timeframe",
+              "name": "timeframe",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.timeframe }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": false
+        }
+      }
+    },
+    {
+      "name": "Score Lead — Basic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2112,
+        464
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEAD_VALIDATOR_URL + '/score-lead' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { lead: $('Validate Lead Contract').item.json.body.data } }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Is Basic Score Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2368,
+        464
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Build CRM Profile — Basic",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2640,
+        464
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "email",
+              "name": "email",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.email }}",
+              "type": "string"
+            },
+            {
+              "id": "firstName",
+              "name": "firstName",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.firstName }}",
+              "type": "string"
+            },
+            {
+              "id": "lastName",
+              "name": "lastName",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.lastName ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "companyName",
+              "name": "companyName",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.companyName ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "jobTitle",
+              "name": "jobTitle",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.jobTitle ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "companyWebsite",
+              "name": "companyWebsite",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.companyDomain ?? undefined }}",
+              "type": "string"
+            },
+            {
+              "id": "leadScore",
+              "name": "leadScore",
+              "value": "={{ $json.body.data.score }}",
+              "type": "number"
+            },
+            {
+              "id": "leadPriority",
+              "name": "leadPriority",
+              "value": "={{ $json.body.data.priority }}",
+              "type": "string"
+            },
+            {
+              "id": "leadService",
+              "name": "leadService",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.serviceInterest }}",
+              "type": "string"
+            },
+            {
+              "id": "timeframe",
+              "name": "timeframe",
+              "value": "={{ $('Validate Lead Contract').item.json.body.data.timeframe }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": false
+        }
+      }
+    },
+    {
+      "name": "Is High Priority?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3952,
+        304
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.leadPriority }}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "HubSpot — Upsert High-Priority Contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        4224,
+        208
+      ],
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "authentication": "appToken",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "companyName": "={{ $json.companyName ?? undefined }}",
+          "contactOwner": "={{ $('Get CRM Owner').item.json.owner_id }}",
+          "firstName": "={{ $json.firstName }}",
+          "jobTitle": "={{ $json.jobTitle ?? undefined }}",
+          "lastName": "={{ $json.lastName ?? undefined }}",
+          "industry": "={{ $json.industry ?? undefined }}",
+          "city": "={{ $json.city ?? undefined }}",
+          "country": "={{ $json.country ?? undefined }}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "lead_score",
+                "value": "={{ String($json.leadScore) }}"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "HubSpot — Create High-Priority Follow-up Task",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        5584,
+        240
+      ],
+      "parameters": {
+        "resource": "engagement",
+        "operation": "create",
+        "authentication": "appToken",
+        "type": "task",
+        "dueDate": "={{ $now.toUTC().plus({ days: 1 }).toFormat(\"yyyy-MM-dd'T'HH:mm:ss\") }}",
+        "metadata": {
+          "body": "={{ 'Revisar lead de alta prioridad. Event ID: ' + $('Validate Lead Contract').item.json.body.data.eventId }}",
+          "forObjectType": "CONTACT",
+          "status": "NOT_STARTED",
+          "subject": "Contactar lead de alta prioridad"
+        },
+        "additionalFields": {
+          "associations": {
+            "contactIds": "={{ String($('HubSpot — Upsert High-Priority Contact').item.json.vid) }}",
+            "ownerId": "={{ Number($('Get CRM Owner').item.json.owner_id) }}"
+          }
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Get High-Priority Task Recovery",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4496,
+        112
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_retry_queue",
+          "cachedResultName": "sales_retry_queue"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "onError": "continueErrorOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "name": "Was High-Priority Task Created?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4768,
+        112
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status ?? '' }}",
+              "rightValue": "task_created",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Is High-Priority Task Pending?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5040,
+        176
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status ?? '' }}",
+              "rightValue": "task_pending",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Record High-Priority Task Pending",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        5312,
+        240
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_retry_queue",
+          "cachedResultName": "sales_retry_queue"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId }}",
+            "status": "task_pending",
+            "contact_id": "={{ String($('HubSpot — Upsert High-Priority Contact').item.json.vid) }}",
+            "task_id": "",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contact_id",
+              "displayName": "contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "task_id",
+              "displayName": "task_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Record High-Priority Task Created",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        5856,
+        240
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_retry_queue",
+          "cachedResultName": "sales_retry_queue"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId }}",
+            "status": "task_created",
+            "contact_id": "={{ String($('HubSpot — Upsert High-Priority Contact').item.json.vid) }}",
+            "task_id": "={{ String($json.engagement.id) }}",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contact_id",
+              "displayName": "contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "task_id",
+              "displayName": "task_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Respond 502 — Task Recovery Pending",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        5312,
+        48
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: false, error: 'task_recovery_pending', eventId: $('Validate Lead Contract').item.json.body.data.eventId } }}",
+        "options": {
+          "responseCode": 502
+        }
+      }
+    },
+    {
+      "name": "Has CRM Owner?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1840,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.owner_id ?? '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Respond 500 — CRM Owner Routing Missing",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2112,
+        640
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: false, error: 'crm_owner_routing_missing', eventId: $('Validate Lead Contract').item.json.body.data.eventId } }}",
+        "options": {
+          "responseCode": 500
+        }
+      }
+    },
+    {
+      "name": "Record Metric — Lead Received",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        520,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ 'received-' + $execution.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ 'received-' + $execution.id }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "lead_received",
+            "priority": "",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — Valid Lead",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1040,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ 'valid-' + $execution.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ 'valid-' + $execution.id }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "lead_valid",
+            "priority": "",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — Validation Failed",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ 'validation-failed-' + $execution.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ 'validation-failed-' + $execution.id }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "lead_validation_failed",
+            "priority": "",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — Duplicate",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1520,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ 'duplicate-' + $execution.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ 'duplicate-' + $execution.id }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "lead_duplicate",
+            "priority": "",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — Scored Enriched",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3520,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-scored' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-scored' }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "lead_scored",
+            "priority": "={{ $json.leadPriority }}",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — Scored Basic",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3520,
+        720
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-scored' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-scored' }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "lead_scored",
+            "priority": "={{ $json.leadPriority }}",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — HubSpot Standard Failure",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4480,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-hubspot-failed' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-hubspot-failed' }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "hubspot_failed",
+            "priority": "",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — HubSpot High Failure",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        4480,
+        720
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-hubspot-failed' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-hubspot-failed' }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "hubspot_failed",
+            "priority": "",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — HubSpot Task Failure",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        5760,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-hubspot-failed' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-hubspot-failed' }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "hubspot_failed",
+            "priority": "",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Record Metric — High Task Created",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        6240,
+        560
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_metrics_events",
+          "cachedResultName": "sales_metrics_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "metric_event_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-task-created' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_event_id": "={{ $('Validate Lead Contract').item.json.body.data.eventId + '-task-created' }}",
+            "metric_date": "={{ $now.setZone('America/Argentina/Buenos_Aires').toFormat('yyyy-MM-dd') }}",
+            "metric_type": "high_priority_task_created",
+            "priority": "high",
+            "occurred_at": "={{ $now.toUTC().toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "metric_event_id",
+              "displayName": "metric_event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_date",
+              "displayName": "metric_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "metric_type",
+              "displayName": "metric_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "occurred_at",
+              "displayName": "occurred_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Get High-Priority Email Alert Config",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        6128,
+        720
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "sales_alert_config",
+          "cachedResultName": "sales_alert_config"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "alert_key",
+              "condition": "eq",
+              "keyValue": "high_priority_email"
+            },
+            {
+              "keyName": "enabled",
+              "condition": "eq",
+              "keyValue": "true"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      }
+    },
+    {
+      "name": "Gmail — Alert High-Priority Lead",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        6400,
+        720
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "authentication": "oAuth2",
+        "sendTo": "={{ $json.recipient_email }}",
+        "subject": "={{ '[CRM] Nuevo lead de prioridad alta — ' + $('Validate Lead Contract').item.json.body.data.eventId }}",
+        "emailType": "text",
+        "message": "={{ 'Se creó una tarea de seguimiento para un lead de prioridad alta.\\n\\nLead: ' + $('Validate Lead Contract').item.json.body.data.firstName + ' ' + $('Validate Lead Contract').item.json.body.data.lastName + '\\nEmail: ' + $('Validate Lead Contract').item.json.body.data.email + '\\nInterés: ' + $('Validate Lead Contract').item.json.body.data.serviceInterest + '\\nPlazo: ' + $('Validate Lead Contract').item.json.body.data.timeframe + '\\nEvent ID: ' + $('Validate Lead Contract').item.json.body.data.eventId + '\\n\\nRevisá la tarea “Contactar lead de alta prioridad” en HubSpot.' }}",
+        "senderName": "CRM Sales Automation",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Webhook — Receive Lead": {
+      "main": [
+        [
+          {
+            "node": "Validate Lead Contract",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — Lead Received",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Lead Contract": {
+      "main": [
+        [
+          {
+            "node": "Is Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid?": {
+      "main": [
+        [
+          {
+            "node": "Get Processed Event",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — Valid Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 422 — Validation Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — Validation Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Processed Event": {
+      "main": [
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Respond 202 — Duplicate",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get CRM Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot — Upsert Contact": {
+      "main": [
+        [
+          {
+            "node": "Mark Event Processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — HubSpot Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — HubSpot Standard Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Event Processed": {
+      "main": [
+        [
+          {
+            "node": "Respond 202 — Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — HubSpot Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Company Domain?": {
+      "main": [
+        [
+          {
+            "node": "Abstract — Enrich Company",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Score Lead — Basic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Abstract — Enrich Company": {
+      "main": [
+        [
+          {
+            "node": "Is Abstract Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Abstract Successful?": {
+      "main": [
+        [
+          {
+            "node": "Validate Abstract Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — Abstract Enrichment Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Abstract Response": {
+      "main": [
+        [
+          {
+            "node": "Is Abstract Response Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Abstract Response Valid?": {
+      "main": [
+        [
+          {
+            "node": "Score Lead — Enriched",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — Invalid Abstract Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Lead — Enriched": {
+      "main": [
+        [
+          {
+            "node": "Is Enriched Score Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Enriched Score Valid?": {
+      "main": [
+        [
+          {
+            "node": "Build CRM Profile — Enriched",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 500 — Lead Scoring Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Lead — Basic": {
+      "main": [
+        [
+          {
+            "node": "Is Basic Score Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Basic Score Valid?": {
+      "main": [
+        [
+          {
+            "node": "Build CRM Profile — Basic",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 500 — Lead Scoring Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build CRM Profile — Enriched": {
+      "main": [
+        [
+          {
+            "node": "Is High Priority?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — Scored Enriched",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build CRM Profile — Basic": {
+      "main": [
+        [
+          {
+            "node": "Is High Priority?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — Scored Basic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is High Priority?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot — Upsert High-Priority Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HubSpot — Upsert Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot — Upsert High-Priority Contact": {
+      "main": [
+        [
+          {
+            "node": "Get High-Priority Task Recovery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — HubSpot Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — HubSpot High Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot — Create High-Priority Follow-up Task": {
+      "main": [
+        [
+          {
+            "node": "Record High-Priority Task Created",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — HubSpot Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — HubSpot Task Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get High-Priority Task Recovery": {
+      "main": [
+        [
+          {
+            "node": "Was High-Priority Task Created?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — HubSpot Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was High-Priority Task Created?": {
+      "main": [
+        [
+          {
+            "node": "Mark Event Processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is High-Priority Task Pending?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is High-Priority Task Pending?": {
+      "main": [
+        [
+          {
+            "node": "Respond 502 — Task Recovery Pending",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record High-Priority Task Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record High-Priority Task Pending": {
+      "main": [
+        [
+          {
+            "node": "HubSpot — Create High-Priority Follow-up Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — HubSpot Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record High-Priority Task Created": {
+      "main": [
+        [
+          {
+            "node": "Mark Event Processed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Metric — High Task Created",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get High-Priority Email Alert Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 502 — HubSpot Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CRM Owner": {
+      "main": [
+        [
+          {
+            "node": "Has CRM Owner?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has CRM Owner?": {
+      "main": [
+        [
+          {
+            "node": "Has Company Domain?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 500 — CRM Owner Routing Missing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get High-Priority Email Alert Config": {
+      "main": [
+        [
+          {
+            "node": "Gmail — Alert High-Priority Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

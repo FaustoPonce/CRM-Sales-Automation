@@ -1,0 +1,25 @@
+{
+  "name": "crm-sales-automation",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "check": "npm run typecheck && npm run lint && npm run build && npm run test && node scripts/check-exports.mjs",
+    "lint": "eslint src",
+    "test": "node --test dist/lead-validation/validate.test.js",
+    "typecheck": "tsc --noEmit --project tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.3",
+    "eslint": "^10.11.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0"
+  }
+}
